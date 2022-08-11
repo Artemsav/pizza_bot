@@ -185,3 +185,63 @@ def link_main_image(product_id, image_id, access_token):
         }
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
+
+
+def create_flow(
+    name,
+    description,
+    access_token,
+    enabled=True
+        ):
+    url = 'https://api.moltin.com/v2/flows'
+    headers = {
+        'Authorization': f'Bearer {access_token}'
+        }
+    payload = {
+        'data': {
+            'type': 'flow',
+            'name': name,
+            'slug': name.lower(),
+            'description': description,
+            'enabled': enabled
+            }
+        }
+    response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
+    return response.json()
+
+
+def create_flows_field(
+    flow_id,
+    field_name,
+    field_type,
+    description,
+    access_token,
+    required=True,
+    enabled=True,
+        ):
+    url = 'https://api.moltin.com/v2/fields'
+    headers = {
+        'Authorization': f'Bearer {access_token}'
+        }
+    payload = {
+        'data': {
+            'type': 'field',
+            'name': field_name,
+            'slug': field_name.lower(),
+            'field_type': field_type,
+            'description': description,
+            'required': required,
+            'enabled': enabled,
+            'relationships': {
+                'flow': {
+                    'data': {
+                        'type': 'flow',
+                        'id': flow_id
+                    }
+                }
+            }
+        }
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
