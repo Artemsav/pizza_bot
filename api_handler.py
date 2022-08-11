@@ -1,7 +1,7 @@
 import requests
 import os
 from pathlib import Path
-
+from googletrans import Translator
 
 def get_all_products(access_token: str):
     url = 'https://api.moltin.com/v2/products'
@@ -110,5 +110,78 @@ def create_customer(
             'password': password,
         },
     }
+    response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
+
+
+def make_slug(product_name):
+    translator = Translator()
+    translated_text = translator.translate(product_name, src='ru').text
+    chunked_text = translated_text.split(' ')
+    slug_text = '-'.join(chunked_text).lower()
+    return slug_text
+
+
+def create_product(product, access_token):
+    url = 'https://api.moltin.com/v2/products'
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        }
+    product_id = product['id']
+    product_name = product['name']
+    product_description = f"{product['description']}, содержание: жиры {product['food_value']['fats']}г,\
+белки {product['food_value']['proteins']}г, углеводы {product['food_value']['carbohydrates']}г,\
+каллорийность {product['food_value']['kiloCalories']} ккал, вес {product['food_value']['weight']}г"
+    product_price = product['price']
+    payload = {
+        'data': {
+            'type': 'product',
+            'name': product_name,
+            'slug': make_slug(product_name),
+            'sku': str(product_id),
+            'manage_stock': False,
+            'description': product_description,
+            'price': [
+                {
+                    'amount': product_price,
+                    'currency': 'RUB',
+                    'includes_tax': True,
+                    }
+                ],
+            'status': 'live',
+            'commodity_type': 'physical'
+            },
+        }
+    response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
+    return response.json()
+
+
+def create_file(product, access_token):
+    '''file creation'''
+    url = 'https://api.moltin.com/v2/files'
+    headers = {
+        'Authorization': f'Bearer {access_token}'
+        }
+
+    files = {
+            'file_location': (None, product['product_image']['url']),
+        }
+    response = requests.post(url, headers=headers, files=files)
+    response.raise_for_status()
+    return response.json()
+
+
+def link_main_image(product_id, image_id, access_token):
+    url = f'https://api.moltin.com/v2/products/{product_id}/relationships/main-image'
+    headers = {
+        'Authorization': f'Bearer {access_token}'
+        }
+    payload = {
+        'data': {
+            'type': 'main_image',
+            'id': image_id
+            },
+        }
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
