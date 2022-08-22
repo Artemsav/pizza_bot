@@ -27,7 +27,7 @@ def update_token(func):
     def inner(elastickpath_access_token, client_id_secret, update: Update, context: CallbackContext):
         epoch_time = elastickpath_access_token.get('expires')
         el_path_client_id, el_path_client_secret = client_id_secret
-        if time.time()> epoch_time:
+        if time.time() > epoch_time:
             elastickpath_access_token = get_access_token(el_path_client_id, el_path_client_secret)
         return func(elastickpath_access_token, client_id_secret, update, context)
     return inner
@@ -79,7 +79,8 @@ def handle_description(
     product_describtion = f'{product_name}\n{product_price_formatted} рублей\n\n{product_text}'
     keyboard = [
         [
-            InlineKeyboardButton('Добавить товар к корзину', callback_data=f'{product_id}|card:1'),
+            InlineKeyboardButton('Добавить 1 пиццу в корзину', callback_data=f'{product_id}|card:1'),
+            InlineKeyboardButton('Добавить 2 пиццы в корзину', callback_data=f'{product_id}|card:2')
             ],
         [InlineKeyboardButton('Корзина', callback_data='productcard')],
         [InlineKeyboardButton('Назад', callback_data='back')]
@@ -108,6 +109,7 @@ def handle_product_button(
     product_id, card = query.data.split('|')
     _, quantity = card.split(':')
     add_product_to_card(chat_id, product_id, access_token, int(quantity))
+    update.callback_query.answer(text='Товар добавлен в корзину')
     return HANDLE_MENU
 
 
