@@ -8,7 +8,7 @@ from exceptions import StoringDataError
 from copy import deepcopy
 
 
-class FishShopPersistence(BasePersistence):
+class PizzaShopPersistence(BasePersistence):
     def __init__(
         self,
         reddisdb: Redis,

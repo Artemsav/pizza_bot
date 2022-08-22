@@ -16,7 +16,8 @@ def get_all_products(access_token: str):
 def get_product(product_id: str, access_token: str):
     url = f'https://api.moltin.com/v2/products/{product_id}'
     headers = {
-        'Authorization': f'Bearer {access_token}'
+        'Authorization': f'Bearer {access_token}',
+        'X-MOLTIN-CURRENCY': 'RUB'
     }
     response = requests.get(url, headers=headers)
     response.raise_for_status()

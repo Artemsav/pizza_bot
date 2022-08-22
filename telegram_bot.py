@@ -15,7 +15,7 @@ from api_handler import (add_product_to_card, create_customer,
                          get_product, remove_cart_item)
 from get_access_token import get_access_token
 from logging_handler import TelegramLogsHandler
-from storing_data import FishShopPersistence
+from storing_data import PizzaShopPersistence
 
 logger = logging.getLogger(__name__)
 
@@ -72,15 +72,14 @@ def handle_description(
     product_payload = get_product(product_id, access_token)
     product_name = product_payload.get('data').get('name')
     product_price = product_payload.get('data').get('meta').get('display_price').get('with_tax').get('formatted')
+    product_price_formatted = product_price.strip('RUB')
     product_text = product_payload.get('data').get('description')
     product_image_id = product_payload.get('data').get('relationships').get('main_image').get('data').get('id')
     path = get_image(product_image_id, access_token)
-    product_describtion = f'{product_name}\n{product_price}\n\n{product_text}'
+    product_describtion = f'{product_name}\n{product_price_formatted} рублей\n\n{product_text}'
     keyboard = [
         [
-            InlineKeyboardButton('1 kg', callback_data=f'{product_id}|card:1'),
-            InlineKeyboardButton('2 kg', callback_data=f'{product_id}|card:2'),
-            InlineKeyboardButton('3 kg', callback_data=f'{product_id}|card:3')
+            InlineKeyboardButton('Добавить товар к корзину', callback_data=f'{product_id}|card:1'),
             ],
         [InlineKeyboardButton('Корзина', callback_data='productcard')],
         [InlineKeyboardButton('Назад', callback_data='back')]
@@ -133,7 +132,7 @@ def handle_cart(elastickpath_access_token, client_id_secret, update: Update, con
     access_token = elastickpath_access_token.get('access_token')
     cards = get_card(chat_id, access_token)
     card_items = get_card_items(chat_id, access_token)
-    card_total_price = cards.get('data').get('meta').get('display_price').get('with_tax').get('formatted')
+    card_total_price = cards.get('data').get('meta').get('display_price').get('with_tax').get('formatted').strip('RUB')
     message_id = update.effective_message.message_id
     chat_id = update.effective_message.chat_id
     context.bot.delete_message(chat_id=chat_id, message_id=message_id)
@@ -143,9 +142,9 @@ def handle_cart(elastickpath_access_token, client_id_secret, update: Update, con
         card_item_id = item.get('id')
         item_name = item.get('name')
         item_quantity = item.get('quantity')
-        item_price_per_item = item.get('meta').get('display_price').get('with_tax').get('unit').get('formatted')
-        item_total_price = item.get('meta').get('display_price').get('with_tax').get('value').get('formatted')
-        products_describtion = f'{item_name}\n{item_price_per_item} per kg\n{item_quantity}kg in cart for {item_total_price}\n\n'
+        item_price_per_item = item.get('meta').get('display_price').get('with_tax').get('unit').get('formatted').strip('RUB')
+        item_total_price = item.get('meta').get('display_price').get('with_tax').get('value').get('formatted').strip('RUB')
+        products_describtion = f'{item_name}\n{item_price_per_item}руб за шт\n{item_quantity}шт в корзине за {item_total_price}руб\n\n'
         products_list.append(products_describtion)
         button = [InlineKeyboardButton(f'Убрать из корзины {item_name}', callback_data=card_item_id)]
         keyboard.append(button)
@@ -155,7 +154,7 @@ def handle_cart(elastickpath_access_token, client_id_secret, update: Update, con
     keyboard.append(pay_button)
     reply_markup = InlineKeyboardMarkup(keyboard)
     all_products = ''.join(product for product in products_list)
-    card_message = f'{all_products}Total:{card_total_price}'
+    card_message = f'{all_products}\nИтого:{card_total_price}руб'
     context.bot.send_message(
         chat_id=chat_id,
         text=card_message,
@@ -200,7 +199,6 @@ def handle_pay_request_phone(redis_db, update: Update, context: CallbackContext)
     return CLOSE_ORDER
 
 
-@update_token
 def close_order(
     redis_db,
     elastickpath_access_token,
@@ -254,9 +252,9 @@ def main():
     load_dotenv()
     token = os.getenv('TOKEN_TELEGRAM')
     user_id = os.getenv('TG_USER_ID')
-    redis_host = os.getenv('REDDIS_HOST')
-    redis_port = os.getenv('REDDIS_PORT')
-    redis_pass = os.getenv('REDDIS_PASS')
+    redis_host = os.getenv('REDIS_HOST')
+    redis_port = os.getenv('REDIS_PORT')
+    redis_pass = os.getenv('REDIS_PASS')
     el_path_client_id = os.getenv('ELASTICPATH_CLIENT_ID')
     el_path_client_secret = os.getenv('ELASTICPATH_CLIENT_SECRET')
     elastickpath_access_token = get_access_token(el_path_client_id, el_path_client_secret)
@@ -266,7 +264,7 @@ def main():
         port=redis_port,
         password=redis_pass
         )
-    persistence = FishShopPersistence(redis_base)
+    persistence = PizzaShopPersistence(redis_base)
     logging_token = os.getenv('TG_TOKEN_LOGGING')
     logging_bot = Bot(token=logging_token)
     logging.basicConfig(
@@ -323,7 +321,7 @@ def main():
         },
         fallbacks=[CommandHandler("end", end_conversation)],
         name="pizza_conversation",
-        persistent=True,
+        persistent=True
     )
     dispatcher.add_handler(conv_handler)
     dispatcher.add_error_handler(handle_error)
