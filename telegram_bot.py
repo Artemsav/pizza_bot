@@ -274,7 +274,7 @@ def main():
             )
     logger.setLevel(logging.DEBUG)
     logger.addHandler(TelegramLogsHandler(tg_bot=logging_bot, chat_id=user_id))
-    logger.info('Fish store bot запущен')
+    logger.info('Pizza store bot запущен')
     """Start the bot."""
     updater = Updater(token, persistence=persistence)
     dispatcher = updater.dispatcher
@@ -322,7 +322,7 @@ def main():
             ]
         },
         fallbacks=[CommandHandler("end", end_conversation)],
-        name="my_conversation",
+        name="pizza_conversation",
         persistent=True,
     )
     dispatcher.add_handler(conv_handler)
