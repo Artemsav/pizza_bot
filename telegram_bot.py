@@ -16,6 +16,7 @@ from api_handler import (add_product_to_card, create_customer,
 from get_access_token import get_access_token
 from logging_handler import TelegramLogsHandler
 from storing_data import PizzaShopPersistence
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +34,35 @@ def update_token(func):
     return inner
 
 
-def create_menu(products):
+def create_menu(products, page=0):
     keyboard = []
-    for product in products.get('data'):
-        product_name = product.get('name')
-        product_id = product.get('id')
-        button = [InlineKeyboardButton(product_name, callback_data=product_id)]
-        keyboard.append(button)
+    product_on_page = 5
+    max_products = math.ceil(len(products.get('data'))/product_on_page)
+    for count, product in enumerate(products.get('data')):
+        if page+product_on_page > count and count >= page:
+            product_name = product.get('name')
+            product_id = product.get('id')
+            button = [InlineKeyboardButton(product_name, callback_data=product_id)]
+            keyboard.append(button)
     card_keyboard = [InlineKeyboardButton('Корзина', callback_data='productcard')]
+    if page <= 0:
+        incr_page = page + product_on_page
+        navigation_keyboard = [
+            InlineKeyboardButton('След',  callback_data=f'productcardnext#{incr_page}')
+        ]
+    elif page >= max_products:
+        decr_page = page - product_on_page
+        navigation_keyboard = [
+            InlineKeyboardButton('Пред',  callback_data=f'productcardback#{decr_page}')
+        ]
+    else:
+        incr_page = page + product_on_page
+        decr_page = page - product_on_page
+        navigation_keyboard = [
+            InlineKeyboardButton('След',  callback_data=f'productcardnext#{incr_page}'),
+            InlineKeyboardButton('Пред',  callback_data=f'productcardback#{decr_page}')
+        ]
+    keyboard.append(navigation_keyboard)
     keyboard.append(card_keyboard)
     reply_markup = InlineKeyboardMarkup(keyboard)
     return reply_markup
@@ -119,11 +141,15 @@ def handle_menu(elastickpath_access_token, client_id_secret, update: Update, con
     products = get_all_products(access_token)
     message_id = update.effective_message.message_id
     chat_id = update.effective_message.chat_id
+    query = update.callback_query
+    page = 0
+    if 'productcardnext' in query.data or 'productcardback' in query.data:
+        button, page = query.data.split('#')
     context.bot.delete_message(chat_id=chat_id, message_id=message_id)
     context.bot.send_message(
         chat_id=chat_id,
         text='Пожалуйста выберите товар',
-        reply_markup=create_menu(products)
+        reply_markup=create_menu(products, int(page))
         )
     return HANDLE_DESCRIPTION
 
@@ -294,13 +320,13 @@ def main():
                 MessageHandler(Filters.text, partial_start),
                 ],
             HANDLE_DESCRIPTION: [
-                CallbackQueryHandler(partial_handle_product_button, pattern="^(\S{3,}card:[1-3])$"),
+                CallbackQueryHandler(partial_handle_product_button, pattern="^(\S{3,}card:[1-2])$"),
                 CallbackQueryHandler(partial_handle_cart, pattern="^(productcard)$"),
                 CallbackQueryHandler(partial_handle_describtion),
                 ],
             HANDLE_MENU: [
                 CallbackQueryHandler(partial_handle_menu, pattern="^(back)$"),
-                CallbackQueryHandler(partial_handle_product_button, pattern="^(\S{3,}card:[1-3])$"),
+                CallbackQueryHandler(partial_handle_product_button, pattern="^(\S{3,}card:[1-2])$"),
                 CallbackQueryHandler(partial_handle_cart, pattern="^(productcard)$")
             ],
             HANDLE_CART: [
