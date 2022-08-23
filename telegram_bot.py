@@ -9,7 +9,7 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (CallbackContext, CallbackQueryHandler,
                           CommandHandler, ConversationHandler, Filters,
                           MessageHandler, Updater)
-
+from telegram_bot_pagination import InlineKeyboardPaginator
 from api_handler import (add_product_to_card, create_customer,
                          get_all_products, get_card, get_card_items, get_image,
                          get_product, remove_cart_item)
@@ -165,14 +165,14 @@ def handle_cart(elastickpath_access_token, client_id_secret, update: Update, con
     return HANDLE_CART
 
 
-@update_token
 def remove_card_item(elastickpath_access_token, client_id_secret, update: Update, context: CallbackContext):
     chat_id = update.effective_message.chat_id
     query = update.callback_query
     product_id = query.data
     access_token = elastickpath_access_token.get('access_token')
+    update.callback_query.answer(text='Товар удален из корзины')
     remove_cart_item(card_id=chat_id, product_id=product_id, access_token=access_token)
-    handle_cart(access_token, update, context)
+    handle_cart(elastickpath_access_token, client_id_secret, update, context)
     return HANDLE_CART
 
 
