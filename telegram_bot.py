@@ -12,7 +12,7 @@ from telegram.ext import (CallbackContext, CallbackQueryHandler,
 from api_handler import (add_product_to_card, create_customer,
                          get_all_products, get_card, get_card_items, get_image,
                          get_product, remove_cart_item, fetch_coordinates,
-                         get_distance, get_all_entries)
+                         get_distance, get_all_entries, create_entry_customer)
 from get_access_token import get_access_token
 from logging_handler import TelegramLogsHandler
 from storing_data import PizzaShopPersistence
@@ -234,28 +234,39 @@ def handle_pay_request(redis_db, update: Update, context: CallbackContext):
     return WAITING_GEO
 
 
-def handle_pay_request_phone(elastickpath_access_token, yandex_geo_api, update: Update, context: CallbackContext):
+def handle_pay_request_geo(elastickpath_access_token, yandex_geo_api, update: Update, context: CallbackContext):
     chat_id = update.effective_message.chat_id
     user_geo = update.message.text
     user_geo_verified = fetch_coordinates(yandex_geo_api, user_geo)
     access_token = elastickpath_access_token.get('access_token')
     message = 'Извините, мы не смогли определить ваше местоположение, попробуйте ввести еще раз'
     if user_geo_verified:
-        user_address = user_geo_verified['GeoObject']['metaDataProperty']['GeocoderMetaData']['text']
+        #user_address = user_geo_verified['GeoObject']['metaDataProperty']['GeocoderMetaData']['text']
         user_coordinates = user_geo_verified['GeoObject']['Point']['pos'].split(' ')
-        nearest_restaurant = find_nearest_restaurant(user_coordinates, access_token)['distance']
-        if 5 > int(nearest_restaurant) >= 0.5:
-            message = f'Доставим, расстояние {nearest_restaurant:1.2}км'
-        elif 20 > int(nearest_restaurant) >= 5:
-            message = f'Доставим за 100руб, расстояние {nearest_restaurant:1.2}км'
-        elif int(nearest_restaurant) >= 20:
-            message = f'Доставим за 300руб, расстояние {nearest_restaurant:1.2}км'
+        nearest_restaurant = find_nearest_restaurant(user_coordinates, access_token)
+        nearest_restaurant_distance = nearest_restaurant['distance']
+        nearest_restaurant_address = nearest_restaurant.get('restuarant')
+        if 0.5 >= nearest_restaurant_distance:
+            message = f'Может заберете пиццу из нашей пиццерии неподалеку? Она находится всего в {nearest_restaurant_distance:1.2}км от вас! Вот ее адрес: {nearest_restaurant_address}. А можем доставить беплатно!'
+        elif 5 > nearest_restaurant_distance >= 0.5:
+            message = f'Может заберете пиццу из нашей пиццерии? Она находится в {nearest_restaurant_distance:1.2}км от вас! Вот ее адрес: {nearest_restaurant_address}. А можем доставить за 100руб'
+        elif 20 >= nearest_restaurant_distance >= 5:
+            message = f'Может заберете пиццу из нашей пиццерии? Она находится в {nearest_restaurant_distance:1.2}км от вас! Вот ее адрес: {nearest_restaurant_address}. А можем доставить за 300руб'
         else:
             message = f'Простите, но мы так далеко пиццу не доставим.\
-                     Ближайшая пиццерия находится на расстояние {nearest_restaurant:1.2}км'
+                     Ближайшая пиццерия находится на расстояние {nearest_restaurant_distance:1.2}км. Вот ее адрес {nearest_restaurant_address}'
+    context.user_data.update(nearest_restaurant)
+    keyboard = [
+        [
+            InlineKeyboardButton('Самовывоз', callback_data='selfdelivery'),
+            InlineKeyboardButton('Доставка', callback_data='delivery'),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_message(
         chat_id=chat_id,
         text=message,
+        reply_markup=reply_markup
     )
     return CLOSE_ORDER
 
@@ -268,21 +279,16 @@ def close_order(
     context: CallbackContext
 ):
     chat_id = update.effective_message.chat_id
-    chat_id_redis_email = f'{chat_id}_email'
-    email = redis_db.get(chat_id_redis_email).decode('utf-8')
-    password = '12345'
     phone = update.message.text
+    nearest_restaurant = context.user_data
+    nearest_restaurant_distance = nearest_restaurant.get('distance')
+    nearest_restaurant_address = nearest_restaurant.get('restuarant')
     access_token = elastickpath_access_token.get('access_token')
-    create_customer(
-        phone,
-        email,
-        password,
-        access_token)
-    message = f'Ваш email:{email}\nВаш телефон: {phone}'
+
+    message = f'Ваш email:\nВаш телефон: {phone}'
     keyboard = [
         [
-            InlineKeyboardButton('Да', callback_data='yes'),
-            InlineKeyboardButton('Нет', callback_data='no'),
+            InlineKeyboardButton('ВСЕ', callback_data='selfdelivery'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -345,7 +351,7 @@ def main():
     partial_handle_product_button = partial(handle_product_button, elastickpath_access_token, client_id_secret)
     partial_remove_card_item = partial(remove_card_item, elastickpath_access_token, client_id_secret)
     partial_handle_pay_request = partial(handle_pay_request, redis_base)
-    partial_handle_pay_request_phone = partial(handle_pay_request_phone, elastickpath_access_token, yandex_geo_api)
+    partial_handle_pay_request_geo = partial(handle_pay_request_geo, elastickpath_access_token, yandex_geo_api)
     partial_close_order = partial(close_order, redis_base, elastickpath_access_token, client_id_secret)
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", partial_start)],
@@ -375,13 +381,13 @@ def main():
             WAITING_GEO: [
                 MessageHandler(
                     Filters.text & ~Filters.command,
-                    partial_handle_pay_request_phone
+                    partial_handle_pay_request_geo
                     ),
             ],
             CLOSE_ORDER: [
-                CallbackQueryHandler(partial_handle_menu, pattern="^(yes)$"),
-                CallbackQueryHandler(partial_handle_pay_request, pattern="^(no)$"),
-                MessageHandler(Filters.text & ~Filters.command, partial_close_order),
+                CallbackQueryHandler(partial_handle_menu, pattern="^(selfdelivery)$"),
+                CallbackQueryHandler(partial_handle_pay_request, pattern="^(delivery)$"),
+                MessageHandler(Filters.command, partial_close_order),
             ]
         },
         fallbacks=[CommandHandler("end", end_conversation)],

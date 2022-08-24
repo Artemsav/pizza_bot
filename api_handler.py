@@ -312,3 +312,25 @@ def get_all_entries(access_token, flow_slug):
     response = requests.get(url, headers=headers)
     response.raise_for_status()
     return response.json()
+
+
+def create_entry_customer(
+    lat_slug,
+    lat_value,
+    lon_slug,
+    lon_value,
+    access_token
+        ):
+    url = f'https://api.moltin.com/v2/flows/customer_address/entries'
+    headers = {
+        'Authorization': f'Bearer {access_token}'
+        }
+    payload = {
+        'data': {
+            'type': 'entry',
+            f'{lat_slug}': f'{lat_value}',
+            f'{lon_slug}': f'{lon_value}'
+        }
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
