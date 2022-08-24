@@ -9,7 +9,6 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (CallbackContext, CallbackQueryHandler,
                           CommandHandler, ConversationHandler, Filters,
                           MessageHandler, Updater)
-from telegram_bot_pagination import InlineKeyboardPaginator
 from api_handler import (add_product_to_card, create_customer,
                          get_all_products, get_card, get_card_items, get_image,
                          get_product, remove_cart_item)
@@ -37,7 +36,7 @@ def update_token(func):
 def create_menu(products, page=0):
     keyboard = []
     product_on_page = 5
-    max_products = math.ceil(len(products.get('data'))/product_on_page)
+    max_products = math.ceil(len(products.get('data'))/product_on_page)*product_on_page
     for count, product in enumerate(products.get('data')):
         if page+product_on_page > count and count >= page:
             product_name = product.get('name')
@@ -48,19 +47,19 @@ def create_menu(products, page=0):
     if page <= 0:
         incr_page = page + product_on_page
         navigation_keyboard = [
-            InlineKeyboardButton('След',  callback_data=f'productcardnext#{incr_page}')
+            InlineKeyboardButton('След',  callback_data=f'pagenext#{incr_page}')
         ]
     elif page >= max_products:
         decr_page = page - product_on_page
         navigation_keyboard = [
-            InlineKeyboardButton('Пред',  callback_data=f'productcardback#{decr_page}')
+            InlineKeyboardButton('Пред',  callback_data=f'pageback#{decr_page}')
         ]
     else:
         incr_page = page + product_on_page
         decr_page = page - product_on_page
         navigation_keyboard = [
-            InlineKeyboardButton('След',  callback_data=f'productcardnext#{incr_page}'),
-            InlineKeyboardButton('Пред',  callback_data=f'productcardback#{decr_page}')
+            InlineKeyboardButton('След',  callback_data=f'pagenext#{incr_page}'),
+            InlineKeyboardButton('Пред',  callback_data=f'pageback#{decr_page}')
         ]
     keyboard.append(navigation_keyboard)
     keyboard.append(card_keyboard)
@@ -143,7 +142,7 @@ def handle_menu(elastickpath_access_token, client_id_secret, update: Update, con
     chat_id = update.effective_message.chat_id
     query = update.callback_query
     page = 0
-    if 'productcardnext' in query.data or 'productcardback' in query.data:
+    if 'pagenext' in query.data or 'pageback' in query.data:
         button, page = query.data.split('#')
     context.bot.delete_message(chat_id=chat_id, message_id=message_id)
     context.bot.send_message(
@@ -321,7 +320,9 @@ def main():
                 ],
             HANDLE_DESCRIPTION: [
                 CallbackQueryHandler(partial_handle_product_button, pattern="^(\S{3,}card:[1-2])$"),
-                CallbackQueryHandler(partial_handle_cart, pattern="^(productcard)$"),
+                CallbackQueryHandler(partial_handle_menu, pattern="^(pagenext#\d+)$"),
+                CallbackQueryHandler(partial_handle_menu, pattern="^(pageback#\d+)$"),
+                CallbackQueryHandler(partial_handle_menu, pattern="^(back)$"),
                 CallbackQueryHandler(partial_handle_describtion),
                 ],
             HANDLE_MENU: [
