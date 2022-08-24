@@ -11,7 +11,8 @@ from telegram.ext import (CallbackContext, CallbackQueryHandler,
                           MessageHandler, Updater)
 from api_handler import (add_product_to_card, create_customer,
                          get_all_products, get_card, get_card_items, get_image,
-                         get_product, remove_cart_item)
+                         get_product, remove_cart_item, fetch_coordinates,
+                         get_distance, get_all_entries)
 from get_access_token import get_access_token
 from logging_handler import TelegramLogsHandler
 from storing_data import PizzaShopPersistence
@@ -20,7 +21,7 @@ import math
 logger = logging.getLogger(__name__)
 
 START, HANDLE_MENU, HANDLE_DESCRIPTION,\
-    HANDLE_CART, WAITING_EMAIL, CLOSE_ORDER = range(6)
+    HANDLE_CART, WAITING_GEO, CLOSE_ORDER = range(6)
 
 
 def update_token(func):
@@ -31,6 +32,26 @@ def update_token(func):
             elastickpath_access_token = get_access_token(el_path_client_id, el_path_client_secret)
         return func(elastickpath_access_token, client_id_secret, update, context)
     return inner
+
+
+def get_restaurant_distance(restaurant):
+    return restaurant['distance']
+
+
+def find_nearest_restaurant(coordinates, access_token):
+    pizza_slug = 'pizzeria'
+    all_restaurants_with_distance = []
+    restaurants = get_all_entries(access_token, pizza_slug)
+    for restuarant in restaurants['data']:
+        restaurants_with_distance = {}
+        restuarant_lon = restuarant['longitude']
+        restuarant_lat = restuarant['latitude']
+        restaurants_with_distance['restuarant'] = restuarant['address']
+        restaurants_with_distance['distance'] = get_distance(coordinates, (restuarant_lon,restuarant_lat))
+        all_restaurants_with_distance.append(restaurants_with_distance)
+    nearest_restaurant = min(all_restaurants_with_distance, key=get_restaurant_distance)
+    return nearest_restaurant
+
 
 
 def create_menu(products, page=0):
@@ -189,7 +210,7 @@ def handle_cart(elastickpath_access_token, client_id_secret, update: Update, con
     )
     return HANDLE_CART
 
-
+@update_token
 def remove_card_item(elastickpath_access_token, client_id_secret, update: Update, context: CallbackContext):
     chat_id = update.effective_message.chat_id
     query = update.callback_query
@@ -205,20 +226,33 @@ def handle_pay_request(redis_db, update: Update, context: CallbackContext):
     message_id = update.effective_message.message_id
     chat_id = update.effective_message.chat_id
     context.bot.delete_message(chat_id=chat_id, message_id=message_id)
-    message = 'Пришлите пожалуйста ваш email'
+    message = 'Хорошо, пришлите нам ваш адрес текстом или геолокацию'
     context.bot.send_message(
         chat_id=chat_id,
         text=message,
     )
-    return WAITING_EMAIL
+    return WAITING_GEO
 
 
-def handle_pay_request_phone(redis_db, update: Update, context: CallbackContext):
+def handle_pay_request_phone(elastickpath_access_token, yandex_geo_api, update: Update, context: CallbackContext):
     chat_id = update.effective_message.chat_id
-    email = update.message.text
-    chat_id_redis = f'{chat_id}_email'
-    redis_db.set(chat_id_redis, email)
-    message = 'Пришлите пожалуйста ваш телефонный номер'
+    user_geo = update.message.text
+    user_geo_verified = fetch_coordinates(yandex_geo_api, user_geo)
+    access_token = elastickpath_access_token.get('access_token')
+    message = 'Извините, мы не смогли определить ваше местоположение, попробуйте ввести еще раз'
+    if user_geo_verified:
+        user_address = user_geo_verified['GeoObject']['metaDataProperty']['GeocoderMetaData']['text']
+        user_coordinates = user_geo_verified['GeoObject']['Point']['pos'].split(' ')
+        nearest_restaurant = find_nearest_restaurant(user_coordinates, access_token)['distance']
+        if 5 > int(nearest_restaurant) >= 0.5:
+            message = f'Доставим, расстояние {nearest_restaurant:1.2}км'
+        elif 20 > int(nearest_restaurant) >= 5:
+            message = f'Доставим за 100руб, расстояние {nearest_restaurant:1.2}км'
+        elif int(nearest_restaurant) >= 20:
+            message = f'Доставим за 300руб, расстояние {nearest_restaurant:1.2}км'
+        else:
+            message = f'Простите, но мы так далеко пиццу не доставим.\
+                     Ближайшая пиццерия находится на расстояние {nearest_restaurant:1.2}км'
     context.bot.send_message(
         chat_id=chat_id,
         text=message,
@@ -284,6 +318,7 @@ def main():
     redis_pass = os.getenv('REDIS_PASS')
     el_path_client_id = os.getenv('ELASTICPATH_CLIENT_ID')
     el_path_client_secret = os.getenv('ELASTICPATH_CLIENT_SECRET')
+    yandex_geo_api = os.getenv('YANDEX_GEO')
     elastickpath_access_token = get_access_token(el_path_client_id, el_path_client_secret)
     client_id_secret = (el_path_client_id, el_path_client_secret)
     redis_base = redis.Redis(
@@ -310,7 +345,7 @@ def main():
     partial_handle_product_button = partial(handle_product_button, elastickpath_access_token, client_id_secret)
     partial_remove_card_item = partial(remove_card_item, elastickpath_access_token, client_id_secret)
     partial_handle_pay_request = partial(handle_pay_request, redis_base)
-    partial_handle_pay_request_phone = partial(handle_pay_request_phone, redis_base)
+    partial_handle_pay_request_phone = partial(handle_pay_request_phone, elastickpath_access_token, yandex_geo_api)
     partial_close_order = partial(close_order, redis_base, elastickpath_access_token, client_id_secret)
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", partial_start)],
@@ -323,6 +358,7 @@ def main():
                 CallbackQueryHandler(partial_handle_menu, pattern="^(pagenext#\d+)$"),
                 CallbackQueryHandler(partial_handle_menu, pattern="^(pageback#\d+)$"),
                 CallbackQueryHandler(partial_handle_menu, pattern="^(back)$"),
+                CallbackQueryHandler(partial_handle_cart, pattern="^(productcard)$"),
                 CallbackQueryHandler(partial_handle_describtion),
                 ],
             HANDLE_MENU: [
@@ -336,7 +372,7 @@ def main():
                 CallbackQueryHandler(partial_handle_menu, pattern="^(back)$"),
                 CallbackQueryHandler(partial_remove_card_item)
             ],
-            WAITING_EMAIL: [
+            WAITING_GEO: [
                 MessageHandler(
                     Filters.text & ~Filters.command,
                     partial_handle_pay_request_phone

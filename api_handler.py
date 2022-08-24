@@ -2,6 +2,8 @@ import requests
 import os
 from pathlib import Path
 from googletrans import Translator
+from geopy import distance
+
 
 def get_all_products(access_token: str):
     url = 'https://api.moltin.com/v2/products'
@@ -275,5 +277,38 @@ def create_entry(
         }
     }
     response = requests.post(url, headers=headers, json=payload)
-    print(response.text)
     response.raise_for_status()
+
+
+def fetch_coordinates(apikey, address):
+    base_url = "https://geocode-maps.yandex.ru/1.x"
+    response = requests.get(base_url, params={
+        "geocode": address,
+        "apikey": apikey,
+        "format": "json",
+    })
+    response.raise_for_status()
+    found_places = response.json()['response']['GeoObjectCollection']['featureMember']
+    if not found_places:
+        return None
+    most_relevant = found_places[0]
+    #yandex_address = most_relevant['GeoObject']['Point']['pos']
+    #print(most_relevant)
+    return most_relevant
+
+
+def get_distance(coordinates, restaurant_coordinates):
+    lan, lot = coordinates
+    restaurant_lan, restaurant_lot = restaurant_coordinates
+    if lan and lot and restaurant_lan and restaurant_lot is not None:
+        return distance.distance(coordinates, restaurant_coordinates).km
+
+
+def get_all_entries(access_token, flow_slug):
+    url = f'https://api.moltin.com/v2/flows/{flow_slug}/entries'
+    headers = {
+        'Authorization': f'Bearer {access_token}'
+        }
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    return response.json()
