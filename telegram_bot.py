@@ -47,7 +47,9 @@ def find_nearest_restaurant(coordinates, access_token):
         restuarant_lon = restuarant['longitude']
         restuarant_lat = restuarant['latitude']
         restaurants_with_distance['restuarant'] = restuarant['address']
-        restaurants_with_distance['distance'] = get_distance(coordinates, (restuarant_lon,restuarant_lat))
+        restaurants_with_distance['distance'] = get_distance(coordinates, (restuarant_lon, restuarant_lat))
+        restaurants_with_distance['coordinates'] = (restuarant_lon, restuarant_lat)
+        restaurants_with_distance['user_coordinates'] = coordinates
         all_restaurants_with_distance.append(restaurants_with_distance)
     nearest_restaurant = min(all_restaurants_with_distance, key=get_restaurant_distance)
     return nearest_restaurant
@@ -210,6 +212,7 @@ def handle_cart(elastickpath_access_token, client_id_secret, update: Update, con
     )
     return HANDLE_CART
 
+
 @update_token
 def remove_card_item(elastickpath_access_token, client_id_secret, update: Update, context: CallbackContext):
     chat_id = update.effective_message.chat_id
@@ -241,20 +244,29 @@ def handle_pay_request_geo(elastickpath_access_token, yandex_geo_api, update: Up
     access_token = elastickpath_access_token.get('access_token')
     message = 'Извините, мы не смогли определить ваше местоположение, попробуйте ввести еще раз'
     if user_geo_verified:
-        #user_address = user_geo_verified['GeoObject']['metaDataProperty']['GeocoderMetaData']['text']
         user_coordinates = user_geo_verified['GeoObject']['Point']['pos'].split(' ')
         nearest_restaurant = find_nearest_restaurant(user_coordinates, access_token)
         nearest_restaurant_distance = nearest_restaurant['distance']
-        nearest_restaurant_address = nearest_restaurant.get('restuarant')
+        nearest_restaurant_address = nearest_restaurant['restuarant']
         if 0.5 >= nearest_restaurant_distance:
-            message = f'Может заберете пиццу из нашей пиццерии неподалеку? Она находится всего в {nearest_restaurant_distance:1.2}км от вас! Вот ее адрес: {nearest_restaurant_address}. А можем доставить беплатно!'
+            message = f'Может заберете пиццу из нашей пиццерии неподалеку? \
+                        Она находится всего в {nearest_restaurant_distance:1.2}км от вас! \
+                        Вот ее адрес: {nearest_restaurant_address}. А можем доставить беплатно!'
         elif 5 > nearest_restaurant_distance >= 0.5:
-            message = f'Может заберете пиццу из нашей пиццерии? Она находится в {nearest_restaurant_distance:1.2}км от вас! Вот ее адрес: {nearest_restaurant_address}. А можем доставить за 100руб'
+            message = f'Может заберете пиццу из нашей пиццерии? \
+                        Она находится в {nearest_restaurant_distance:1.2}км от вас! \
+                        Вот ее адрес: {nearest_restaurant_address}. \
+                        А можем доставить за 100руб'
         elif 20 >= nearest_restaurant_distance >= 5:
-            message = f'Может заберете пиццу из нашей пиццерии? Она находится в {nearest_restaurant_distance:1.2}км от вас! Вот ее адрес: {nearest_restaurant_address}. А можем доставить за 300руб'
+            message = f'Может заберете пиццу из нашей пиццерии? \
+                        Она находится в {nearest_restaurant_distance:1.2}км от вас! \
+                        Вот ее адрес: {nearest_restaurant_address}. \
+                        А можем доставить за 300руб'
         else:
             message = f'Простите, но мы так далеко пиццу не доставим.\
-                     Ближайшая пиццерия находится на расстояние {nearest_restaurant_distance:1.2}км. Вот ее адрес {nearest_restaurant_address}'
+                        Ближайшая пиццерия находится на расстояние \
+                        {nearest_restaurant_distance:1.2}км. Вот \
+                        ее адрес {nearest_restaurant_address}'
     context.user_data.update(nearest_restaurant)
     keyboard = [
         [
@@ -271,27 +283,77 @@ def handle_pay_request_geo(elastickpath_access_token, yandex_geo_api, update: Up
     return CLOSE_ORDER
 
 
-def close_order(
-    redis_db,
+def send_notification_to_curier(access_token, update: Update, context: CallbackContext):
+    chat_id = update.effective_message.chat_id
+    user_data = context.user_data
+    user_coordinates = user_data['user_coordinates']
+    cards = get_card(chat_id, access_token)
+    card_items = get_card_items(chat_id, access_token)
+    products_list = []
+    total_quantity = 0
+    card_total_price = cards.get('data').get('meta').get('display_price').get('with_tax').get('formatted').strip('RUB')
+    for item in card_items.get('data'):
+        item_name = item.get('name')
+        item_quantity = item.get('quantity')
+        total_quantity += int(item_quantity)
+        products_list.append(item_name)
+    all_products = ', '.join(product for product in products_list)
+    message = f'{all_products}\n{total_quantity} пиццы в корзине на сумму {card_total_price}\nК оплате:{card_total_price}руб'
+    lon, lat = user_coordinates
+    context.bot.send_message(
+        chat_id=chat_id,
+        text=message
+    )
+    context.bot.send_location(
+        chat_id=chat_id,
+        latitude=lat,
+        longitude=lon
+    )
+
+
+def handle_deliviry(elastickpath_access_token, update: Update, context: CallbackContext):
+    chat_id = update.effective_message.chat_id
+    access_token = elastickpath_access_token.get('access_token')
+    message = 'Наш курьер уже в пути. Далее необходимо оплатить покупку'
+    keyboard = [
+        [
+            InlineKeyboardButton('Оплата', callback_data='payorder'),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    send_notification_to_curier(access_token, update, context)
+    context.bot.send_message(
+        chat_id=chat_id,
+        text=message,
+        reply_markup=reply_markup
+    )
+    return CLOSE_ORDER
+
+
+def handle_selfdeliviry(
     elastickpath_access_token,
-    client_id_secret,
     update: Update,
     context: CallbackContext
 ):
     chat_id = update.effective_message.chat_id
-    phone = update.message.text
-    nearest_restaurant = context.user_data
-    nearest_restaurant_distance = nearest_restaurant.get('distance')
-    nearest_restaurant_address = nearest_restaurant.get('restuarant')
+    user_data = context.user_data
+    nearest_restaurant_coordinates = user_data['coordinates']
+    lon, lat = nearest_restaurant_coordinates
     access_token = elastickpath_access_token.get('access_token')
-
-    message = f'Ваш email:\nВаш телефон: {phone}'
+    cards = get_card(chat_id, access_token)
+    card_total_price = cards.get('data').get('meta').get('display_price').get('with_tax').get('formatted').strip('RUB')
+    message = f'Супер! Мы прислали вам карту до ближайшей пиццерии. Осталось оплатить покупку, к оплате {card_total_price}руб'
     keyboard = [
         [
-            InlineKeyboardButton('ВСЕ', callback_data='selfdelivery'),
+            InlineKeyboardButton('Оплата', callback_data='payorder'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
+    context.bot.send_location(
+        chat_id=chat_id,
+        latitude=lat,
+        longitude=lon
+    )
     context.bot.send_message(
         chat_id=chat_id,
         text=message,
@@ -352,7 +414,8 @@ def main():
     partial_remove_card_item = partial(remove_card_item, elastickpath_access_token, client_id_secret)
     partial_handle_pay_request = partial(handle_pay_request, redis_base)
     partial_handle_pay_request_geo = partial(handle_pay_request_geo, elastickpath_access_token, yandex_geo_api)
-    partial_close_order = partial(close_order, redis_base, elastickpath_access_token, client_id_secret)
+    partial_handle_selfdeliviry = partial(handle_selfdeliviry, elastickpath_access_token)
+    partial_handle_deliviry = partial(handle_deliviry, elastickpath_access_token)
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", partial_start)],
         states={
@@ -385,9 +448,8 @@ def main():
                     ),
             ],
             CLOSE_ORDER: [
-                CallbackQueryHandler(partial_handle_menu, pattern="^(selfdelivery)$"),
-                CallbackQueryHandler(partial_handle_pay_request, pattern="^(delivery)$"),
-                MessageHandler(Filters.command, partial_close_order),
+                CallbackQueryHandler(partial_handle_selfdeliviry, pattern="^(selfdelivery)$"),
+                CallbackQueryHandler(partial_handle_deliviry, pattern="^(delivery)$"),
             ]
         },
         fallbacks=[CommandHandler("end", end_conversation)],
