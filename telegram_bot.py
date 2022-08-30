@@ -5,10 +5,10 @@ from functools import partial
 
 import redis
 from dotenv import load_dotenv
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update, LabeledPrice
 from telegram.ext import (CallbackContext, CallbackQueryHandler,
                           CommandHandler, ConversationHandler, Filters,
-                          MessageHandler, Updater)
+                          MessageHandler, Updater, )
 from api_handler import (add_product_to_card, create_customer,
                          get_all_products, get_card, get_card_items, get_image,
                          get_product, remove_cart_item, fetch_coordinates,
@@ -373,6 +373,47 @@ def handle_selfdeliviry(
     return CLOSE_ORDER
 
 
+def start_without_shipping_callback(
+    update: Update, context: CallbackContext, payment_token
+) -> None:
+    """Sends an invoice without shipping-payment."""
+    chat_id = update.message.chat_id
+    title = "Payment"
+    description = "Payment Example using python-telegram-bot"
+    # select a payload just for you to recognize its the donation from your bot
+    payload = "Pizza-bot"
+    # In order to get a provider_token see https://core.telegram.org/bots/payments#getting-a-token
+    currency = "RUB"
+    # price in dollars
+    price = 1
+    # price * 100 so as to include 2 decimal points
+    prices = [LabeledPrice("Test", price * 100)]
+
+    # optionally pass need_name=True, need_phone_number=True,
+    # need_email=True, need_shipping_address=True, is_flexible=True
+    context.bot.send_invoice(
+        chat_id, title, description, payload, payment_token, currency, prices
+    )
+
+
+def precheckout_callback(update: Update, context: CallbackContext) -> None:
+    """Answers the PreQecheckoutQuery"""
+    query = update.pre_checkout_query
+    # check the payload, is this from your bot?
+    if query.invoice_payload != "Custom-Payload":
+        # answer False pre_checkout_query
+        query.answer(ok=False, error_message="Something went wrong...")
+    else:
+        query.answer(ok=True)
+
+
+def successful_payment_callback(update: Update, context: CallbackContext) -> None:
+    """Confirms the successful payment."""
+    # do something after successfully receiving payment?
+    update.message.reply_text("Thank you for your payment!")
+
+
+
 def handle_error(update: Update, context: CallbackContext):
     """Log Errors caused by Updates."""
     logger.warning(
@@ -398,6 +439,7 @@ def main():
     el_path_client_id = os.getenv('ELASTICPATH_CLIENT_ID')
     el_path_client_secret = os.getenv('ELASTICPATH_CLIENT_SECRET')
     yandex_geo_api = os.getenv('YANDEX_GEO')
+    payment_token = os.getenv('PAYMENT_PROVIDER_TOKEN')
     elastickpath_access_token = get_access_token(el_path_client_id, el_path_client_secret)
     client_id_secret = (el_path_client_id, el_path_client_secret)
     redis_base = redis.Redis(
