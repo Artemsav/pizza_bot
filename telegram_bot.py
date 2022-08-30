@@ -311,7 +311,16 @@ def send_notification_to_curier(access_token, update: Update, context: CallbackC
     )
 
 
-def handle_deliviry(elastickpath_access_token, update: Update, context: CallbackContext):
+def notify_of_delay(context):
+    message = 'Приятного аппетита! *место для рекламы*\
+               \n*сообщение, что делать, если пицца не пришла'
+    context.bot.send_message(
+        chat_id=context.job.context,
+        text=message
+    )
+
+
+def handle_deliviry(elastickpath_access_token, job_queue, update: Update, context: CallbackContext):
     chat_id = update.effective_message.chat_id
     access_token = elastickpath_access_token.get('access_token')
     message = 'Наш курьер уже в пути. Далее необходимо оплатить покупку'
@@ -327,6 +336,8 @@ def handle_deliviry(elastickpath_access_token, update: Update, context: Callback
         text=message,
         reply_markup=reply_markup
     )
+    delay_hour = 60*60*60
+    job_queue.run_once(notify_of_delay, delay_hour, context=chat_id)
     return CLOSE_ORDER
 
 
@@ -405,7 +416,9 @@ def main():
     logger.info('Pizza store bot запущен')
     """Start the bot."""
     updater = Updater(token, persistence=persistence)
+    job_queue = updater.job_queue
     dispatcher = updater.dispatcher
+    job_queue.set_dispatcher(dispatcher=dispatcher)
     partial_start = partial(start, elastickpath_access_token, client_id_secret)
     partial_handle_menu = partial(handle_menu, elastickpath_access_token, client_id_secret)
     partial_handle_describtion = partial(handle_description, elastickpath_access_token, client_id_secret)
@@ -415,7 +428,7 @@ def main():
     partial_handle_pay_request = partial(handle_pay_request, redis_base)
     partial_handle_pay_request_geo = partial(handle_pay_request_geo, elastickpath_access_token, yandex_geo_api)
     partial_handle_selfdeliviry = partial(handle_selfdeliviry, elastickpath_access_token)
-    partial_handle_deliviry = partial(handle_deliviry, elastickpath_access_token)
+    partial_handle_deliviry = partial(handle_deliviry, elastickpath_access_token, job_queue)
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", partial_start)],
         states={
