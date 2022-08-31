@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update, LabeledPrice
 from telegram.ext import (CallbackContext, CallbackQueryHandler,
                           CommandHandler, ConversationHandler, Filters,
-                          MessageHandler, Updater, )
+                          MessageHandler, Updater, PreCheckoutQueryHandler, filters,)
 from api_handler import (add_product_to_card, create_customer,
                          get_all_products, get_card, get_card_items, get_image,
                          get_product, remove_cart_item, fetch_coordinates,
@@ -374,23 +374,22 @@ def handle_selfdeliviry(
 
 
 def start_without_shipping_callback(
-    update: Update, context: CallbackContext, payment_token
+    elastickpath_access_token,
+    payment_token,
+    update: Update,
+    context: CallbackContext
 ) -> None:
     """Sends an invoice without shipping-payment."""
-    chat_id = update.message.chat_id
-    title = "Payment"
-    description = "Payment Example using python-telegram-bot"
-    # select a payload just for you to recognize its the donation from your bot
+    chat_id = update.effective_message.chat_id
+    access_token = elastickpath_access_token.get('access_token')
+    cards = get_card(chat_id, access_token)
+    card_total_price = cards.get('data').get('meta').get('display_price').get('with_tax').get('formatted').strip('RUB')
+    title = "Оплата"
+    description = "Прошу вас введите данные нажмите на кнопку с суммой оплаты и оплатите товар"
     payload = "Pizza-bot"
-    # In order to get a provider_token see https://core.telegram.org/bots/payments#getting-a-token
     currency = "RUB"
-    # price in dollars
-    price = 1
-    # price * 100 so as to include 2 decimal points
-    prices = [LabeledPrice("Test", price * 100)]
-
-    # optionally pass need_name=True, need_phone_number=True,
-    # need_email=True, need_shipping_address=True, is_flexible=True
+    price = int(card_total_price)
+    prices = [LabeledPrice("PizzaBot", price * 100)]
     context.bot.send_invoice(
         chat_id, title, description, payload, payment_token, currency, prices
     )
@@ -399,9 +398,7 @@ def start_without_shipping_callback(
 def precheckout_callback(update: Update, context: CallbackContext) -> None:
     """Answers the PreQecheckoutQuery"""
     query = update.pre_checkout_query
-    # check the payload, is this from your bot?
-    if query.invoice_payload != "Custom-Payload":
-        # answer False pre_checkout_query
+    if query.invoice_payload != "Pizza-bot":
         query.answer(ok=False, error_message="Something went wrong...")
     else:
         query.answer(ok=True)
@@ -409,9 +406,8 @@ def precheckout_callback(update: Update, context: CallbackContext) -> None:
 
 def successful_payment_callback(update: Update, context: CallbackContext) -> None:
     """Confirms the successful payment."""
-    # do something after successfully receiving payment?
     update.message.reply_text("Thank you for your payment!")
-
+    end_conversation(update, context)
 
 
 def handle_error(update: Update, context: CallbackContext):
@@ -471,6 +467,11 @@ def main():
     partial_handle_pay_request_geo = partial(handle_pay_request_geo, elastickpath_access_token, yandex_geo_api)
     partial_handle_selfdeliviry = partial(handle_selfdeliviry, elastickpath_access_token)
     partial_handle_deliviry = partial(handle_deliviry, elastickpath_access_token, job_queue)
+    partial_start_without_shipping_callback = partial(
+        start_without_shipping_callback,
+        elastickpath_access_token,
+        payment_token
+        )
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", partial_start)],
         states={
@@ -505,6 +506,10 @@ def main():
             CLOSE_ORDER: [
                 CallbackQueryHandler(partial_handle_selfdeliviry, pattern="^(selfdelivery)$"),
                 CallbackQueryHandler(partial_handle_deliviry, pattern="^(delivery)$"),
+                CallbackQueryHandler(
+                    partial_start_without_shipping_callback,
+                    pattern="^(payorder)$"
+                    ),
             ]
         },
         fallbacks=[CommandHandler("end", end_conversation)],
@@ -513,6 +518,10 @@ def main():
     )
     dispatcher.add_handler(conv_handler)
     dispatcher.add_error_handler(handle_error)
+    dispatcher.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    dispatcher.add_handler(
+        MessageHandler(Filters.successful_payment, successful_payment_callback)
+    )
     updater.start_polling()
     updater.idle()
 
