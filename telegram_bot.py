@@ -286,7 +286,7 @@ def handle_pay_request_geo(elastickpath_access_token, yandex_geo_api, update: Up
     return CLOSE_ORDER
 
 
-def send_notification_to_curier(elastickpath_access_token, update: Update, context: CallbackContext):
+def send_notification_to_courier(elastickpath_access_token, update: Update, context: CallbackContext):
     chat_id = update.effective_message.chat_id
     user_data = context.user_data
     user_coordinates = user_data['user_coordinates']
@@ -334,7 +334,7 @@ def handle_deliviry(elastickpath_access_token, job_queue, update: Update, contex
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    send_notification_to_curier(elastickpath_access_token, update, context)
+    send_notification_to_courier(elastickpath_access_token, update, context)
     context.bot.send_message(
         chat_id=chat_id,
         text=message,
