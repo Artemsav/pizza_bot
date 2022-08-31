@@ -20,8 +20,7 @@ python telegram_bot.py
 ```
 
 Example of telegram bot (or you can find it here: @fish_dvm_store_bot):
-![Example](./images/pizza_bot.gif)
-
+![Example](./images/pizza-bot.gif)
 
 ## Instalation
 
