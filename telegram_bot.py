@@ -2,7 +2,9 @@ import logging
 import math
 import os
 import time
+from decimal import Decimal
 from functools import partial
+from re import sub
 
 import redis
 from dotenv import load_dotenv
@@ -19,7 +21,6 @@ from api_handler import (add_product_to_card, fetch_coordinates,
 from get_access_token import get_access_token
 from logging_handler import TelegramLogsHandler
 from storing_data import PizzaShopPersistence
-
 
 logger = logging.getLogger(__name__)
 
@@ -392,7 +393,7 @@ def start_without_shipping_callback(
     description = "Прошу вас введите данные нажмите на кнопку с суммой оплаты и оплатите товар"
     payload = "Pizza-bot"
     currency = "RUB"
-    price = int(card_total_price)
+    price = int(sub(r'[^\d.]', '', card_total_price))
     prices = [LabeledPrice("PizzaBot", price * 100)]
     context.bot.send_invoice(
         chat_id, title, description, payload, payment_token, currency, prices
