@@ -4,7 +4,6 @@ from redis import Redis
 from telegram.ext import BasePersistence
 from telegram.ext.utils.types import ConversationDict, BD, CD, UD
 from typing import DefaultDict, Dict, Optional, Tuple, Any
-from exceptions import StoringDataError
 from copy import deepcopy
 
 
@@ -39,9 +38,10 @@ class PizzaShopPersistence(BasePersistence):
                 self.chat_data = defaultdict(dict)
                 self.bot_data = {}
         except TypeError as exc:
-            raise StoringDataError(
+            print(
                 f"Something went wrong unpickling from Redis, exception is:\n{exc}"
                 )
+            return
 
     def dump_redis(self) -> None:
         data = {
