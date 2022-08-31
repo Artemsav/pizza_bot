@@ -292,8 +292,6 @@ def fetch_coordinates(apikey, address):
     if not found_places:
         return None
     most_relevant = found_places[0]
-    #yandex_address = most_relevant['GeoObject']['Point']['pos']
-    #print(most_relevant)
     return most_relevant
 
 
@@ -321,7 +319,7 @@ def create_entry_customer(
     lon_value,
     access_token
         ):
-    url = f'https://api.moltin.com/v2/flows/customer_address/entries'
+    url = 'https://api.moltin.com/v2/flows/customer_address/entries'
     headers = {
         'Authorization': f'Bearer {access_token}'
         }

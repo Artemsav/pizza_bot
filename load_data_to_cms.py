@@ -1,9 +1,12 @@
 import json
-from api_handler import create_file, create_product, link_main_image, create_flow, create_flows_field, create_entry
-from get_access_token import get_access_token
-from dotenv import load_dotenv
 import os
 from time import sleep
+
+from dotenv import load_dotenv
+
+from api_handler import (create_entry, create_file, create_flow,
+                         create_flows_field, create_product, link_main_image)
+from get_access_token import get_access_token
 
 if __name__ == '__main__':
     load_dotenv()

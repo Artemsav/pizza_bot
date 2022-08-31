@@ -1,22 +1,25 @@
 import logging
+import math
 import os
 import time
 from functools import partial
 
 import redis
 from dotenv import load_dotenv
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update, LabeledPrice
+from telegram import (Bot, InlineKeyboardButton, InlineKeyboardMarkup,
+                      LabeledPrice, Update)
 from telegram.ext import (CallbackContext, CallbackQueryHandler,
                           CommandHandler, ConversationHandler, Filters,
-                          MessageHandler, Updater, PreCheckoutQueryHandler, filters,)
-from api_handler import (add_product_to_card, create_customer,
-                         get_all_products, get_card, get_card_items, get_image,
-                         get_product, remove_cart_item, fetch_coordinates,
-                         get_distance, get_all_entries, create_entry_customer)
+                          MessageHandler, PreCheckoutQueryHandler, Updater)
+
+from api_handler import (add_product_to_card, fetch_coordinates,
+                         get_all_entries, get_all_products, get_card,
+                         get_card_items, get_distance, get_image, get_product,
+                         remove_cart_item)
 from get_access_token import get_access_token
 from logging_handler import TelegramLogsHandler
 from storing_data import PizzaShopPersistence
-import math
+
 
 logger = logging.getLogger(__name__)
 
@@ -283,10 +286,11 @@ def handle_pay_request_geo(elastickpath_access_token, yandex_geo_api, update: Up
     return CLOSE_ORDER
 
 
-def send_notification_to_curier(access_token, update: Update, context: CallbackContext):
+def send_notification_to_curier(elastickpath_access_token, update: Update, context: CallbackContext):
     chat_id = update.effective_message.chat_id
     user_data = context.user_data
     user_coordinates = user_data['user_coordinates']
+    access_token = elastickpath_access_token.get('access_token')
     cards = get_card(chat_id, access_token)
     card_items = get_card_items(chat_id, access_token)
     products_list = []
@@ -330,7 +334,7 @@ def handle_deliviry(elastickpath_access_token, job_queue, update: Update, contex
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    send_notification_to_curier(access_token, update, context)
+    send_notification_to_curier(elastickpath_access_token, update, context)
     context.bot.send_message(
         chat_id=chat_id,
         text=message,
