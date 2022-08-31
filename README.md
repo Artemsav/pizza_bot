@@ -1,7 +1,5 @@
 # Бот Pizza bot
 
-Это MVP бота для продажи и доставки пиццы на основе python-telegram-bot + redis + elasticpath cms
-
 It is MVP of the pizza store market realized based on python-telegram-bot with integration to [Elastic Path Enterprise Digital Commerce Market Place](https://www.elasticpath.com/) and Redis (for persistence)
 
 ## Project description
