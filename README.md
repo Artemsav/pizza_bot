@@ -4,7 +4,6 @@ It is MVP of the pizza store market realized based on python-telegram-bot with i
 
 ## Project description
 
-Placeholder
 To get access token:
 
 ```bash
